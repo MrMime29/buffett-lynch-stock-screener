@@ -1,199 +1,153 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
-# --- Page Configuration ---
-st.set_page_config(page_title="Thinking Investor Dashboard v3", layout="wide", initial_sidebar_state="expanded")
+# --- Helper Functions for Analysis ---
 
-# --- Analysis Engine (No changes needed here) ---
-def analyze_stock(stock):
+def analyze_buffett(stock):
     """
-    Performs a deep, contextual analysis inspired by Buffett and Lynch, now with DIO.
+    Analyzes a stock based on Warren Buffett's principles.
+    Returns a list of strings explaining the results.
     """
-    # --- Buffett's Moat & Management Analysis ---
-    buffett_analysis = {}
-    
-    moat_score = 0
-    if stock['ROE'] > 15 and stock['ROCE'] > 15: moat_score += 1
-    if stock['5Y Operating Margin'] > 15: moat_score += 1
-    if stock['Debt to Equity'] < 0.5: moat_score += 1
-    buffett_analysis['Moat Score'] = (moat_score / 3) * 100
+    results = []
+    score = 0
+    total_criteria = 5
 
-    fcf_positive = stock['Free Cash Flow'] > 0
-    is_capex_heavy_sector = stock['Sector'] in ['Semiconductor', 'Data Center', 'Infra', 'Manufacturing', 'Green Energy']
-    is_high_growth = stock['5Y Sales Growth'] > 25
-
-    if fcf_positive:
-        buffett_analysis['FCF Analysis'] = "✅ Positive FCF: The business is a cash-generating machine."
-    elif is_capex_heavy_sector and is_high_growth:
-        buffett_analysis['FCF Analysis'] = "⚠️ Negative FCF (Contextual Pass): Likely due to aggressive 'Growth Capex'."
+    # 1. Understandable Business (Qualitative - we use Market Cap as a proxy for established business)
+    if stock['Market Cap'] > 10000:
+        results.append("✅ **Large, Established Business:** Market Cap is over ₹10,000 Cr, suggesting a significant and likely understandable business.")
+        score += 1
     else:
-        buffett_analysis['FCF Analysis'] = "❌ Negative FCF: The business is consuming cash."
+        results.append("❌ **Smaller Business:** Market Cap is below ₹10,000 Cr. Requires deeper investigation to ensure it's a durable business.")
 
+    # 2. Low Debt (Durable Competitive Advantage)
+    if stock['Debt to Equity'] < 0.5:
+        results.append(f"✅ **Low Debt:** Debt to Equity ratio is {stock['Debt to Equity']:.2f}, which is below the 0.5 threshold. The company is not overly burdened by debt.")
+        score += 1
+    else:
+        results.append(f"❌ **High Debt:** Debt to Equity ratio is {stock['Debt to Equity']:.2f}. Buffett prefers companies that don't rely on heavy borrowing.")
+
+    # 3. High Return on Equity (ROE) & ROCE (Profitability)
+    if stock['ROE'] > 15 and stock['ROCE'] > 15:
+        results.append(f"✅ **High Profitability:** ROE ({stock['ROE']:.2f}%) and ROCE ({stock['ROCE']:.2f}%) are both above 15%, indicating efficient use of capital and equity.")
+        score += 1
+    else:
+        results.append(f"❌ **Mediocre Profitability:** ROE ({stock['ROE']:.2f}%) or ROCE ({stock['ROCE']:.2f}%) is below 15%. The company may not be as profitable as a Buffett-style investment.")
+
+    # 4. Competent Management (Proxy: Promoter Holding)
+    if stock['Promoter Holding'] > 40:
+        results.append(f"✅ **Significant Promoter Holding:** Promoters hold {stock['Promoter Holding']:.2f}%, showing they have significant skin in the game.")
+        score += 1
+    else:
+        results.append(f"❌ **Low Promoter Holding:** Promoters hold {stock['Promoter Holding']:.2f}%. Requires checking if the company is institutionally managed.")
+
+    # 5. Sensible Valuation (Proxy: P/E Ratio)
     if stock['PE Ratio'] < 25:
-        buffett_analysis['Valuation'] = f"✅ Fairly Priced (P/E: {stock['PE Ratio']:.2f})."
+        results.append(f"✅ **Reasonable Valuation:** P/E Ratio is {stock['PE Ratio']:.2f}, which is below 25. Buffett seeks wonderful companies at a fair price.")
+        score += 1
     else:
-        buffett_analysis['Valuation'] = f"⚠️ Expensive (P/E: {stock['PE Ratio']:.2f})."
+        results.append(f"❌ **Expensive Valuation:** P/E Ratio is {stock['PE Ratio']:.2f}. The stock may be overvalued, requiring strong justification for its high price.")
+        
+    return results, score, total_criteria
 
-    # --- Lynch's Story & Growth Analysis ---
-    lynch_analysis = {}
+def analyze_lynch(stock):
+    """
+    Analyzes a stock based on Peter Lynch's principles.
+    Returns a list of strings explaining the results.
+    """
+    results = []
+    score = 0
+    total_criteria = 4
 
-    if stock['5Y Profit Growth'] > 25 and stock['Market Cap'] < 75000:
-        lynch_analysis['Category'] = "🚀 Fast Grower"
-    elif stock['5Y Profit Growth'] < 15 and stock['Market Cap'] > 100000:
-        lynch_analysis['Category'] = "🚢 Stalwart"
-    elif stock['Sector'] in ['Chemicals', 'Metals', 'Auto', 'Manufacturing']:
-        lynch_analysis['Category'] = "🔄 Cyclical"
+    # 1. Favorable PEG Ratio (Price vs. Growth)
+    # Lynch's most famous metric. A PEG below 1 is considered very good.
+    if stock['PEG Ratio'] < 1.0:
+        results.append(f"✅ **Excellent PEG Ratio:** PEG Ratio is {stock['PEG Ratio']:.2f}. The stock's price appears cheap relative to its earnings growth.")
+        score += 1
+    elif stock['PEG Ratio'] < 1.5:
+        results.append(f"✅ **Fair PEG Ratio:** PEG Ratio is {stock['PEG Ratio']:.2f}. The stock is reasonably priced relative to its growth.")
+        score += 1
     else:
-        lynch_analysis['Category'] = "❓ Hybrid/Other"
+        results.append(f"❌ **High PEG Ratio:** PEG Ratio is {stock['PEG Ratio']:.2f}. The stock may be expensive for its growth rate.")
 
-    if stock['PEG Ratio'] < 1.2:
-        lynch_analysis['PEG Analysis'] = f"✅ GARP (Growth at a Reasonable Price): PEG is {stock['PEG Ratio']:.2f}."
+    # 2. Strong Earnings Growth (Looking for "Fast Growers")
+    if stock['5Y Profit Growth'] > 20:
+        results.append(f"✅ **Strong Profit Growth:** 5-Year Profit Growth is {stock['5Y Profit Growth']:.2f}%, indicating a fast-growing company.")
+        score += 1
     else:
-        lynch_analysis['PEG Analysis'] = f"❌ Expensive Growth: PEG is {stock['PEG Ratio']:.2f}."
+        results.append(f"❌ **Slow Profit Growth:** 5-Year Profit Growth is {stock['5Y Profit Growth']:.2f}%. This may be a 'slow grower' or 'stalwart' rather than a 'fast grower'.")
 
-    if stock['Sales'] > 0 and stock['Inventory'] >= 0:
-        dio = (stock['Inventory'] / stock['Sales']) * 365
-        lynch_analysis['Inventory'] = f"✅ Inventory Days (DIO): {dio:.0f} days."
-        if dio > 120 and stock['Sector'] not in ['Infra', 'Manufacturing']:
-             lynch_analysis['Inventory'] += " (Note: DIO seems high)."
+    # 3. Low Debt
+    if stock['Debt to Equity'] < 0.8:
+        results.append(f"✅ **Manageable Debt:** Debt to Equity ratio is {stock['Debt to Equity']:.2f}. A strong balance sheet is crucial.")
+        score += 1
     else:
-        lynch_analysis['Inventory'] = "✅ No Inventory/Sales data to analyze."
+        results.append(f"❌ **High Debt:** Debt to Equity ratio is {stock['Debt to Equity']:.2f}. Lynch was wary of excessive debt, which increases risk.")
 
-    # --- Final Score & Radar Data ---
-    radar_data = {
-        'Quality': (stock['ROE'] + stock['ROCE']) / 2,
-        'Growth': (stock['5Y Sales Growth'] + stock['5Y Profit Growth']) / 2,
-        'Value': (1 / stock['PE Ratio']) * 100 if stock['PE Ratio'] > 0 else 0,
-        'Safety': (1 - stock['Debt to Equity']) * 50 if stock['Debt to Equity'] < 1 else 0,
-        'Moat': buffett_analysis['Moat Score']
-    }
-    
-    return buffett_analysis, lynch_analysis, radar_data
+    # 4. Is it a "Tenbagger"? (Proxy: Market Cap - smaller companies have more room to grow)
+    if stock['Market Cap'] < 50000:
+        results.append("✅ **Potential for High Growth:** Market Cap is below ₹50,000 Cr. The company is small enough to have explosive growth potential (a potential 'tenbagger').")
+        score += 1
+    else:
+        results.append("❌ **Large Cap ('Stalwart'):** Market Cap is over ₹50,000 Cr. This is likely a 'stalwart' that will provide good, but not explosive, returns.")
 
-# --- Main App UI ---
-st.title("🧠 The Thinking Investor Dashboard v3 (Final)")
-st.markdown("A robust analysis tool with data validation and contextual logic.")
+    return results, score, total_criteria
 
-uploaded_file = st.file_uploader("📂 Upload your Final Stock CSV file", type="csv")
+# --- Streamlit App Layout ---
+
+st.set_page_config(page_title="Investor Checklist Analyzer", layout="wide")
+
+st.title("📈 Investor Checklist: Buffett vs. Lynch")
+st.markdown("""
+This tool analyzes stocks from your CSV file based on the fundamental principles of **Warren Buffett** (looking for wonderful companies at a fair price) and **Peter Lynch** (looking for growth at a reasonable price).
+
+**Instructions:**
+1.  Prepare a CSV file with the required columns: `Ticker`, `Market Cap`, `PE Ratio`, `PEG Ratio`, `Debt to Equity`, `ROE`, `ROCE`, `5Y Sales Growth`, `5Y Profit Growth`, `Promoter Holding`.
+2.  Upload your file using the button below.
+3.  The analysis for each stock will appear automatically.
+""")
+
+uploaded_file = st.file_uploader("📂 Upload your Stock CSV file", type="csv")
 
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
-        
-        required_columns = ['Ticker', 'Sector', 'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', '5Y Sales Growth', '5Y Profit Growth', 'Promoter Holding', 'Free Cash Flow', '5Y Operating Margin', 'Inventory', 'Sales']
+        st.success("File uploaded successfully! Here is the analysis:")
+
+        # Check if required columns exist
+        required_columns = ['Ticker', 'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', '5Y Sales Growth', '5Y Profit Growth', 'Promoter Holding']
         if not all(col in df.columns for col in required_columns):
-            st.error(f"CSV file is missing required columns. Please ensure it contains: {', '.join(required_columns)}")
+            st.error(f"CSV file is missing one or more required columns. Please ensure it contains: {', '.join(required_columns)}")
         else:
-            st.info("Cleaning and converting data types...")
-            numeric_cols = [
-                'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', 
-                '5Y Sales Growth', '5Y Profit Growth', 'Promoter Holding', 
-                'Free Cash Flow', '5Y Operating Margin', 'Inventory', 'Sales'
-            ]
-            for col in numeric_cols:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            original_rows = len(df)
-            df.dropna(inplace=True)
-            cleaned_rows = len(df)
-            if original_rows > cleaned_rows:
-                st.warning(f"Dropped {original_rows - cleaned_rows} row(s) due to missing or invalid numeric data.")
+            for index, row in df.iterrows():
+                # Handle potential missing data in a row
+                if row.isnull().any():
+                    st.warning(f"Skipping analysis for **{row['Ticker']}** due to missing data in the row.")
+                    continue
 
-            all_results = []
-            for _, row in df.iterrows():
-                b_analysis, l_analysis, r_data = analyze_stock(row)
-                all_results.append({
-                    'Ticker': row['Ticker'],
-                    'Buffett': b_analysis,
-                    'Lynch': l_analysis,
-                    'Radar': r_data
-                })
-            
-            # =================================================================
-            # THE FIX: Safety Check for Empty Results
-            # =================================================================
-            if not all_results:
-                st.error("Analysis could not be performed. All rows in the CSV file contained invalid or missing data after cleaning. Please check your CSV file and try again.")
-            else:
-                # --- Portfolio Overview ---
-                st.header("🚀 Portfolio Overview")
-                st.markdown("A high-level look at your portfolio's characteristics.")
-                
-                plot_df = df.copy()
-                plot_df['Moat Score'] = [res['Radar']['Moat'] for res in all_results]
-                
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.subheader("Moat vs. Valuation")
-                    fig_bubble = px.scatter(
-                        plot_df, x='PE Ratio', y='ROE', size='Market Cap', color='Sector',
-                        hover_name='Ticker', size_max=60,
-                        labels={'PE Ratio': 'Valuation (P/E Ratio) →', 'ROE': 'Quality (ROE %) ↑'},
-                        title="Portfolio Positioning"
-                    )
-                    fig_bubble.update_layout(xaxis_title="Lower is Cheaper", yaxis_title="Higher is Better Quality")
-                    st.plotly_chart(fig_bubble, use_container_width=True)
+                st.markdown("---")
+                st.header(f"Analysis for: {row['Ticker']}")
 
-                with c2:
-                    st.subheader("Average Factor Exposure")
-                    avg_radar = {k: sum(d['Radar'][k] for d in all_results) / len(all_results) for k in all_results[0]['Radar']}
-                    fig_radar_avg = go.Figure()
-                    fig_radar_avg.add_trace(go.Scatterpolar(
-                        r=list(avg_radar.values()),
-                        theta=list(avg_radar.keys()),
-                        fill='toself',
-                        name='Portfolio Average'
-                    ))
-                    fig_radar_avg.update_layout(
-                        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                        title="Portfolio's Core DNA"
-                    )
-                    st.plotly_chart(fig_radar_avg, use_container_width=True)
+                col1, col2 = st.columns(2)
 
-                # --- Detailed Stock Analysis ---
-                st.header("🔍 Deep-Dive Analysis")
-                st.markdown("A detailed breakdown of each company in your portfolio.")
+                with col1:
+                    st.subheader(" Buffett Checklist")
+                    buffett_results, buffett_score, buffett_total = analyze_buffett(row)
+                    st.progress(buffett_score / buffett_total)
+                    st.metric(label="Buffett Score", value=f"{buffett_score}/{buffett_total}")
+                    for result in buffett_results:
+                        st.markdown(result)
 
-                for res in all_results:
-                    ticker = res['Ticker']
-                    with st.container():
-                        st.markdown("---")
-                        st.subheader(f"🏢 {ticker}")
-                        
-                        col1, col2 = st.columns([0.6, 0.4])
-                        
-                        with col1:
-                            st.markdown(f"**Peter Lynch's Story:** `{res['Lynch']['Category']}`")
-                            st.markdown(f"**Growth vs. Price:** {res['Lynch']['PEG Analysis']}")
-                            st.markdown(f"**Inventory Efficiency:** {res['Lynch']['Inventory']}")
-                            st.markdown("---")
-                            st.markdown(f"**Warren Buffett's Moat:** `{res['Buffett']['Moat Score']:.0f}%` (Quality, Margins, Low Debt)")
-                            st.markdown(f"**Cash Flow Status:** {res['Buffett']['FCF Analysis']}")
-                            st.markdown(f"**Valuation Check:** {res['Buffett']['Valuation']}")
-
-                        with col2:
-                            fig_radar_ind = go.Figure()
-                            fig_radar_ind.add_trace(go.Scatterpolar(
-                                r=list(res['Radar'].values()),
-                                theta=list(res['Radar'].keys()),
-                                fill='toself',
-                                name=ticker
-                            ))
-                            fig_radar_ind.update_layout(
-                                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                                title=f"{ticker}'s DNA",
-                                height=300
-                            )
-                            st.plotly_chart(fig_radar_ind, use_container_width=True)
-            # =================================================================
-            # End of Safety Check
-            # =================================================================
+                with col2:
+                    st.subheader(" Lynch Checklist")
+                    lynch_results, lynch_score, lynch_total = analyze_lynch(row)
+                    st.progress(lynch_score / lynch_total)
+                    st.metric(label="Lynch Score", value=f"{lynch_score}/{lynch_total}")
+                    for result in lynch_results:
+                        st.markdown(result)
 
     except Exception as e:
-        st.error(f"An unexpected error occurred during analysis: {e}")
-        st.exception(e)
+        st.error(f"An error occurred while processing the file: {e}")
 
 else:
-    st.info("Awaiting your Final CSV file to build the dashboard...")
+    st.info("Awaiting CSV file upload...")
+
