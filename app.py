@@ -4,9 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Thinking Investor Dashboard v2", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Thinking Investor Dashboard v3", layout="wide", initial_sidebar_state="expanded")
 
-# --- Analysis Engine (No changes needed here, the fix is in the data loading part) ---
+# --- Analysis Engine (No changes needed here) ---
 def analyze_stock(stock):
     """
     Performs a deep, contextual analysis inspired by Buffett and Lynch, now with DIO.
@@ -73,8 +73,8 @@ def analyze_stock(stock):
     return buffett_analysis, lynch_analysis, radar_data
 
 # --- Main App UI ---
-st.title("🧠 The Thinking Investor Dashboard v2 (Corrected)")
-st.markdown("An advanced analysis tool using contextual logic and key efficiency metrics like **Days of Inventory Outstanding (DIO)**.")
+st.title("🧠 The Thinking Investor Dashboard v3 (Final)")
+st.markdown("A robust analysis tool with data validation and contextual logic.")
 
 uploaded_file = st.file_uploader("📂 Upload your Final Stock CSV file", type="csv")
 
@@ -82,14 +82,10 @@ if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         
-        # --- Data Validation ---
         required_columns = ['Ticker', 'Sector', 'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', '5Y Sales Growth', '5Y Profit Growth', 'Promoter Holding', 'Free Cash Flow', '5Y Operating Margin', 'Inventory', 'Sales']
         if not all(col in df.columns for col in required_columns):
             st.error(f"CSV file is missing required columns. Please ensure it contains: {', '.join(required_columns)}")
         else:
-            # =================================================================
-            # THE FIX: Data Cleaning & Conversion Section
-            # =================================================================
             st.info("Cleaning and converting data types...")
             numeric_cols = [
                 'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', 
@@ -97,21 +93,14 @@ if uploaded_file is not None:
                 'Free Cash Flow', '5Y Operating Margin', 'Inventory', 'Sales'
             ]
             for col in numeric_cols:
-                # pd.to_numeric will convert columns to numbers. 
-                # The 'coerce' argument turns any problematic values (like text) into NaN (Not a Number)
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             
-            # Drop any rows that have missing values after conversion
             original_rows = len(df)
             df.dropna(inplace=True)
             cleaned_rows = len(df)
             if original_rows > cleaned_rows:
                 st.warning(f"Dropped {original_rows - cleaned_rows} row(s) due to missing or invalid numeric data.")
-            # =================================================================
-            # End of Fix
-            # =================================================================
 
-            # --- Process Data ---
             all_results = []
             for _, row in df.iterrows():
                 b_analysis, l_analysis, r_data = analyze_stock(row)
@@ -122,79 +111,88 @@ if uploaded_file is not None:
                     'Radar': r_data
                 })
             
-            # --- Portfolio Overview ---
-            st.header("🚀 Portfolio Overview")
-            st.markdown("A high-level look at your portfolio's characteristics.")
-            
-            plot_df = df.copy()
-            plot_df['Moat Score'] = [res['Radar']['Moat'] for res in all_results]
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Moat vs. Valuation")
-                fig_bubble = px.scatter(
-                    plot_df, x='PE Ratio', y='ROE', size='Market Cap', color='Sector',
-                    hover_name='Ticker', size_max=60,
-                    labels={'PE Ratio': 'Valuation (P/E Ratio) →', 'ROE': 'Quality (ROE %) ↑'},
-                    title="Portfolio Positioning"
-                )
-                fig_bubble.update_layout(xaxis_title="Lower is Cheaper", yaxis_title="Higher is Better Quality")
-                st.plotly_chart(fig_bubble, use_container_width=True)
+            # =================================================================
+            # THE FIX: Safety Check for Empty Results
+            # =================================================================
+            if not all_results:
+                st.error("Analysis could not be performed. All rows in the CSV file contained invalid or missing data after cleaning. Please check your CSV file and try again.")
+            else:
+                # --- Portfolio Overview ---
+                st.header("🚀 Portfolio Overview")
+                st.markdown("A high-level look at your portfolio's characteristics.")
+                
+                plot_df = df.copy()
+                plot_df['Moat Score'] = [res['Radar']['Moat'] for res in all_results]
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.subheader("Moat vs. Valuation")
+                    fig_bubble = px.scatter(
+                        plot_df, x='PE Ratio', y='ROE', size='Market Cap', color='Sector',
+                        hover_name='Ticker', size_max=60,
+                        labels={'PE Ratio': 'Valuation (P/E Ratio) →', 'ROE': 'Quality (ROE %) ↑'},
+                        title="Portfolio Positioning"
+                    )
+                    fig_bubble.update_layout(xaxis_title="Lower is Cheaper", yaxis_title="Higher is Better Quality")
+                    st.plotly_chart(fig_bubble, use_container_width=True)
 
-            with c2:
-                st.subheader("Average Factor Exposure")
-                avg_radar = {k: sum(d['Radar'][k] for d in all_results) / len(all_results) for k in all_results[0]['Radar']}
-                fig_radar_avg = go.Figure()
-                fig_radar_avg.add_trace(go.Scatterpolar(
-                    r=list(avg_radar.values()),
-                    theta=list(avg_radar.keys()),
-                    fill='toself',
-                    name='Portfolio Average'
-                ))
-                fig_radar_avg.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                    title="Portfolio's Core DNA"
-                )
-                st.plotly_chart(fig_radar_avg, use_container_width=True)
+                with c2:
+                    st.subheader("Average Factor Exposure")
+                    avg_radar = {k: sum(d['Radar'][k] for d in all_results) / len(all_results) for k in all_results[0]['Radar']}
+                    fig_radar_avg = go.Figure()
+                    fig_radar_avg.add_trace(go.Scatterpolar(
+                        r=list(avg_radar.values()),
+                        theta=list(avg_radar.keys()),
+                        fill='toself',
+                        name='Portfolio Average'
+                    ))
+                    fig_radar_avg.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                        title="Portfolio's Core DNA"
+                    )
+                    st.plotly_chart(fig_radar_avg, use_container_width=True)
 
-            # --- Detailed Stock Analysis ---
-            st.header("🔍 Deep-Dive Analysis")
-            st.markdown("A detailed breakdown of each company in your portfolio.")
+                # --- Detailed Stock Analysis ---
+                st.header("🔍 Deep-Dive Analysis")
+                st.markdown("A detailed breakdown of each company in your portfolio.")
 
-            for res in all_results:
-                ticker = res['Ticker']
-                with st.container():
-                    st.markdown("---")
-                    st.subheader(f"🏢 {ticker}")
-                    
-                    col1, col2 = st.columns([0.6, 0.4])
-                    
-                    with col1:
-                        st.markdown(f"**Peter Lynch's Story:** `{res['Lynch']['Category']}`")
-                        st.markdown(f"**Growth vs. Price:** {res['Lynch']['PEG Analysis']}")
-                        st.markdown(f"**Inventory Efficiency:** {res['Lynch']['Inventory']}")
+                for res in all_results:
+                    ticker = res['Ticker']
+                    with st.container():
                         st.markdown("---")
-                        st.markdown(f"**Warren Buffett's Moat:** `{res['Buffett']['Moat Score']:.0f}%` (Quality, Margins, Low Debt)")
-                        st.markdown(f"**Cash Flow Status:** {res['Buffett']['FCF Analysis']}")
-                        st.markdown(f"**Valuation Check:** {res['Buffett']['Valuation']}")
+                        st.subheader(f"🏢 {ticker}")
+                        
+                        col1, col2 = st.columns([0.6, 0.4])
+                        
+                        with col1:
+                            st.markdown(f"**Peter Lynch's Story:** `{res['Lynch']['Category']}`")
+                            st.markdown(f"**Growth vs. Price:** {res['Lynch']['PEG Analysis']}")
+                            st.markdown(f"**Inventory Efficiency:** {res['Lynch']['Inventory']}")
+                            st.markdown("---")
+                            st.markdown(f"**Warren Buffett's Moat:** `{res['Buffett']['Moat Score']:.0f}%` (Quality, Margins, Low Debt)")
+                            st.markdown(f"**Cash Flow Status:** {res['Buffett']['FCF Analysis']}")
+                            st.markdown(f"**Valuation Check:** {res['Buffett']['Valuation']}")
 
-                    with col2:
-                        fig_radar_ind = go.Figure()
-                        fig_radar_ind.add_trace(go.Scatterpolar(
-                            r=list(res['Radar'].values()),
-                            theta=list(res['Radar'].keys()),
-                            fill='toself',
-                            name=ticker
-                        ))
-                        fig_radar_ind.update_layout(
-                            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                            title=f"{ticker}'s DNA",
-                            height=300
-                        )
-                        st.plotly_chart(fig_radar_ind, use_container_width=True)
+                        with col2:
+                            fig_radar_ind = go.Figure()
+                            fig_radar_ind.add_trace(go.Scatterpolar(
+                                r=list(res['Radar'].values()),
+                                theta=list(res['Radar'].keys()),
+                                fill='toself',
+                                name=ticker
+                            ))
+                            fig_radar_ind.update_layout(
+                                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                                title=f"{ticker}'s DNA",
+                                height=300
+                            )
+                            st.plotly_chart(fig_radar_ind, use_container_width=True)
+            # =================================================================
+            # End of Safety Check
+            # =================================================================
 
     except Exception as e:
-        st.error(f"An error occurred during analysis: {e}")
+        st.error(f"An unexpected error occurred during analysis: {e}")
         st.exception(e)
 
 else:
