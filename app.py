@@ -6,8 +6,7 @@ import plotly.graph_objects as go
 # --- Page Configuration ---
 st.set_page_config(page_title="Thinking Investor Dashboard v2", layout="wide", initial_sidebar_state="expanded")
 
-# --- Analysis Engine with Contextual Logic ---
-
+# --- Analysis Engine (No changes needed here, the fix is in the data loading part) ---
 def analyze_stock(stock):
     """
     Performs a deep, contextual analysis inspired by Buffett and Lynch, now with DIO.
@@ -15,14 +14,12 @@ def analyze_stock(stock):
     # --- Buffett's Moat & Management Analysis ---
     buffett_analysis = {}
     
-    # Moat Score Calculation
     moat_score = 0
     if stock['ROE'] > 15 and stock['ROCE'] > 15: moat_score += 1
     if stock['5Y Operating Margin'] > 15: moat_score += 1
     if stock['Debt to Equity'] < 0.5: moat_score += 1
     buffett_analysis['Moat Score'] = (moat_score / 3) * 100
 
-    # Free Cash Flow Analysis (Contextual)
     fcf_positive = stock['Free Cash Flow'] > 0
     is_capex_heavy_sector = stock['Sector'] in ['Semiconductor', 'Data Center', 'Infra', 'Manufacturing', 'Green Energy']
     is_high_growth = stock['5Y Sales Growth'] > 25
@@ -30,20 +27,18 @@ def analyze_stock(stock):
     if fcf_positive:
         buffett_analysis['FCF Analysis'] = "✅ Positive FCF: The business is a cash-generating machine."
     elif is_capex_heavy_sector and is_high_growth:
-        buffett_analysis['FCF Analysis'] = "⚠️ Negative FCF (Contextual Pass): Likely due to aggressive 'Growth Capex' in a high-investment sector. This is an investment in a future moat."
+        buffett_analysis['FCF Analysis'] = "⚠️ Negative FCF (Contextual Pass): Likely due to aggressive 'Growth Capex'."
     else:
-        buffett_analysis['FCF Analysis'] = "❌ Negative FCF: The business is consuming cash. Requires deep investigation."
+        buffett_analysis['FCF Analysis'] = "❌ Negative FCF: The business is consuming cash."
 
-    # Valuation
     if stock['PE Ratio'] < 25:
         buffett_analysis['Valuation'] = f"✅ Fairly Priced (P/E: {stock['PE Ratio']:.2f})."
     else:
-        buffett_analysis['Valuation'] = f"⚠️ Expensive (P/E: {stock['PE Ratio']:.2f}). Price implies high future growth expectations."
+        buffett_analysis['Valuation'] = f"⚠️ Expensive (P/E: {stock['PE Ratio']:.2f})."
 
     # --- Lynch's Story & Growth Analysis ---
     lynch_analysis = {}
 
-    # Categorization
     if stock['5Y Profit Growth'] > 25 and stock['Market Cap'] < 75000:
         lynch_analysis['Category'] = "🚀 Fast Grower"
     elif stock['5Y Profit Growth'] < 15 and stock['Market Cap'] > 100000:
@@ -53,22 +48,18 @@ def analyze_stock(stock):
     else:
         lynch_analysis['Category'] = "❓ Hybrid/Other"
 
-    # PEG Ratio
     if stock['PEG Ratio'] < 1.2:
-        lynch_analysis['PEG Analysis'] = f"✅ GARP (Growth at a Reasonable Price): PEG is attractive at {stock['PEG Ratio']:.2f}."
+        lynch_analysis['PEG Analysis'] = f"✅ GARP (Growth at a Reasonable Price): PEG is {stock['PEG Ratio']:.2f}."
     else:
-        lynch_analysis['PEG Analysis'] = f"❌ Expensive Growth: PEG is high at {stock['PEG Ratio']:.2f}."
+        lynch_analysis['PEG Analysis'] = f"❌ Expensive Growth: PEG is {stock['PEG Ratio']:.2f}."
 
-    # Days of Inventory Outstanding (DIO) Analysis (NEW)
     if stock['Sales'] > 0 and stock['Inventory'] >= 0:
         dio = (stock['Inventory'] / stock['Sales']) * 365
         lynch_analysis['Inventory'] = f"✅ Inventory Days (DIO): {dio:.0f} days."
-        # Add a simple warning for potentially high DIO, can be refined further
         if dio > 120 and stock['Sector'] not in ['Infra', 'Manufacturing']:
              lynch_analysis['Inventory'] += " (Note: DIO seems high)."
     else:
-        lynch_analysis['Inventory'] = "✅ No Inventory/Sales data to analyze (e.g., Service company)."
-
+        lynch_analysis['Inventory'] = "✅ No Inventory/Sales data to analyze."
 
     # --- Final Score & Radar Data ---
     radar_data = {
@@ -82,10 +73,9 @@ def analyze_stock(stock):
     return buffett_analysis, lynch_analysis, radar_data
 
 # --- Main App UI ---
-st.title("🧠 The Thinking Investor Dashboard v2")
+st.title("🧠 The Thinking Investor Dashboard v2 (Corrected)")
 st.markdown("An advanced analysis tool using contextual logic and key efficiency metrics like **Days of Inventory Outstanding (DIO)**.")
 
-# --- File Uploader and Data Processing ---
 uploaded_file = st.file_uploader("📂 Upload your Final Stock CSV file", type="csv")
 
 if uploaded_file is not None:
@@ -97,17 +87,40 @@ if uploaded_file is not None:
         if not all(col in df.columns for col in required_columns):
             st.error(f"CSV file is missing required columns. Please ensure it contains: {', '.join(required_columns)}")
         else:
+            # =================================================================
+            # THE FIX: Data Cleaning & Conversion Section
+            # =================================================================
+            st.info("Cleaning and converting data types...")
+            numeric_cols = [
+                'Market Cap', 'PE Ratio', 'PEG Ratio', 'Debt to Equity', 'ROE', 'ROCE', 
+                '5Y Sales Growth', '5Y Profit Growth', 'Promoter Holding', 
+                'Free Cash Flow', '5Y Operating Margin', 'Inventory', 'Sales'
+            ]
+            for col in numeric_cols:
+                # pd.to_numeric will convert columns to numbers. 
+                # The 'coerce' argument turns any problematic values (like text) into NaN (Not a Number)
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Drop any rows that have missing values after conversion
+            original_rows = len(df)
+            df.dropna(inplace=True)
+            cleaned_rows = len(df)
+            if original_rows > cleaned_rows:
+                st.warning(f"Dropped {original_rows - cleaned_rows} row(s) due to missing or invalid numeric data.")
+            # =================================================================
+            # End of Fix
+            # =================================================================
+
             # --- Process Data ---
             all_results = []
             for _, row in df.iterrows():
-                if not row.isnull().any():
-                    b_analysis, l_analysis, r_data = analyze_stock(row)
-                    all_results.append({
-                        'Ticker': row['Ticker'],
-                        'Buffett': b_analysis,
-                        'Lynch': l_analysis,
-                        'Radar': r_data
-                    })
+                b_analysis, l_analysis, r_data = analyze_stock(row)
+                all_results.append({
+                    'Ticker': row['Ticker'],
+                    'Buffett': b_analysis,
+                    'Lynch': l_analysis,
+                    'Radar': r_data
+                })
             
             # --- Portfolio Overview ---
             st.header("🚀 Portfolio Overview")
@@ -186,4 +199,3 @@ if uploaded_file is not None:
 
 else:
     st.info("Awaiting your Final CSV file to build the dashboard...")
-
